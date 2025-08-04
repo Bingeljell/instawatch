@@ -1,0 +1,14 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
+
+# Runtime artefacts
+*.log
+*.db           # SQLite database
+insta_watch.xml

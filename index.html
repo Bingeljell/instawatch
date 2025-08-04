@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>InstaWatch Feed</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 1rem; }
+    h1 { text-align: center; margin-bottom: 2rem; }
+    .section-header { margin-top: 2rem; font-size: 1.5rem; border-bottom: 2px solid #333; padding-bottom: 0.5rem; }
+    .post { border-bottom: 1px solid #ddd; padding: 1rem 0; }
+    .post h2 { margin: 0 0 0.5rem; font-size: 1.2rem; }
+    .post p { margin: 0.5rem 0; line-height: 1.4; white-space: pre-wrap; }
+    .post img, .post video { max-width: 100%; height: auto; display: block; margin: 0.5rem 0; }
+    .error { color: red; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>InstaWatch Feed</h1>
+  <div id="feed"></div>
+  <script>
+    async function loadFeed() {
+      try {
+        const response = await fetch('instawatch.xml');
+        if (!response.ok) throw new Error(response.statusText);
+        const text = await response.text();
+        const parser = new DOMParser();
+        const xml = parser.parseFromString(text, 'application/xml');
+        const rawItems = Array.from(xml.querySelectorAll('item'));
+        const feed = document.getElementById('feed');
+
+        // Group items by username
+        const grouped = {};
+        rawItems.forEach(item => {
+          const rawTitle = item.querySelector('title')?.textContent || '';
+          const [usernameRaw] = rawTitle.split(':');
+          const username = usernameRaw.trim();
+          if (!grouped[username]) grouped[username] = [];
+          grouped[username].push(item);
+        });
+
+        // Sort usernames alphabetically (e.g., adidas before nike)
+        const usernames = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
+
+        usernames.forEach(username => {
+          // Section header
+          const section = document.createElement('div');
+          section.className = 'section-header';
+          section.textContent = username;
+          feed.appendChild(section);
+
+          // Sort posts by pubDate desc
+          const posts = grouped[username].sort((a, b) => {
+            const da = new Date(a.querySelector('pubDate')?.textContent);
+            const db = new Date(b.querySelector('pubDate')?.textContent);
+            return db - da;
+          });
+
+          posts.forEach(item => {
+            const postDiv = document.createElement('div');
+            postDiv.className = 'post';
+
+            // Title and link
+            const rawTitle = item.querySelector('title')?.textContent || '';
+            const [, ...rest] = rawTitle.split(':');
+            const title = rest.join(':').trim() || 'Post';
+            const postUrl = item.querySelector('link')?.textContent || '#';
+            const linkEl = document.createElement('a');
+            linkEl.href = postUrl;
+            linkEl.textContent = title;
+            linkEl.target = '_blank';
+            const h2 = document.createElement('h2');
+            h2.appendChild(linkEl);
+            postDiv.appendChild(h2);
+
+            // Description
+            let description = '';
+            const encoded = item.getElementsByTagName('content:encoded');
+            if (encoded.length) {
+              description = encoded[0].textContent;
+            } else {
+              const desc = item.getElementsByTagName('description');
+              description = desc[0]?.textContent || '';
+            }
+            if (description) {
+              const p = document.createElement('p');
+              p.innerHTML = description;
+              postDiv.appendChild(p);
+            }
+
+            // Determine shortcode for fallback
+            let shortcode = '';
+            try {
+              const parts = new URL(postUrl).pathname.split('/').filter(Boolean);
+              shortcode = parts[1] || '';
+            } catch { shortcode = ''; }
+
+            // Media enclosures or fallback
+            const encl = Array.from(item.getElementsByTagName('enclosure'));
+            if (encl.length) {
+              encl.forEach(enc => {
+                let url = enc.getAttribute('url');
+                if (!/^https?:\/\//i.test(url)) {
+                  url = window.location.origin + '/' + url.replace(/^\//, '');
+                }
+                if (url.match(/\.(mp4|mov|webm)$/i)) {
+                  const video = document.createElement('video');
+                  video.src = url;
+                  video.controls = true;
+                  postDiv.appendChild(video);
+                } else {
+                  const img = document.createElement('img');
+                  img.src = url;
+                  img.alt = title;
+                  postDiv.appendChild(img);
+                }
+              });
+            } else if (username && shortcode) {
+              // Fallback to static directory files
+              ['jpg', 'png', 'mp4', 'webm', 'mov'].forEach(ext => {
+                const url = `${window.location.origin}/static/${username}/${shortcode}.${ext}`;
+                if (ext.match(/mp4|mov|webm/)) {
+                  const video = document.createElement('video');
+                  video.src = url;
+                  video.controls = true;
+                  postDiv.appendChild(video);
+                } else {
+                  const img = document.createElement('img');
+                  img.src = url;
+                  img.alt = title;
+                  postDiv.appendChild(img);
+                }
+              });
+            }
+
+            feed.appendChild(postDiv);
+          });
+        });
+      } catch (err) {
+        console.error('Failed to load feed', err);
+        document.getElementById('feed').innerHTML = '<p class="error">Failed to load the feed. Check the console for details.</p>';
+      }
+    }
+    loadFeed();
+  </script>
+</body>
+</html>

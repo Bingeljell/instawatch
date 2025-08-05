@@ -12,3 +12,7 @@ __pycache__/
 *.log
 *.db           # SQLite database
 insta_watch.xml
+
+
+#Large files
+/static/

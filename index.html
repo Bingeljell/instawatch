@@ -4,21 +4,30 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>InstaWatch Feed</title>
-  <style>
-    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 1rem; }
-    h1 { text-align: center; margin-bottom: 2rem; }
-    .section-header { margin-top: 2rem; font-size: 1.5rem; border-bottom: 2px solid #333; padding-bottom: 0.5rem; }
-    .post { border-bottom: 1px solid #ddd; padding: 1rem 0; }
-    .post h2 { margin: 0 0 0.5rem; font-size: 1.2rem; }
-    .post p { margin: 0.5rem 0; line-height: 1.4; white-space: pre-wrap; }
-    .post img, .post video { max-width: 100%; height: auto; display: block; margin: 0.5rem 0; }
-    .error { color: red; text-align: center; }
-  </style>
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <h1>InstaWatch Feed</h1>
-  <div id="feed"></div>
+<body class="bg-gray-900 text-gray-100 min-h-screen py-4">
+  <div class="max-w-3xl mx-auto px-4">
+    <!-- Header with title, account selector, and theme toggle -->
+    <header class="flex flex-col sm:flex-row items-center justify-between mb-6">
+      <h1 class="text-3xl font-bold">InstaWatch Feed</h1>
+      <div class="flex items-center space-x-4 mt-4 sm:mt-0">
+        <select id="account-select" class="bg-gray-800 text-gray-100 px-2 py-1 rounded">
+          <option value="All">All Accounts</option>
+        </select>
+        <button id="theme-toggle" class="bg-gray-800 text-gray-100 px-2 py-1 rounded">Light Mode</button>
+      </div>
+    </header>
+
+    <!-- Feed container -->
+    <main id="feed"></main>
+  </div>
+
   <script>
+    let grouped = {};
+    let usernames = [];
+
     async function loadFeed() {
       try {
         const response = await fetch('instawatch.xml');
@@ -26,11 +35,10 @@
         const text = await response.text();
         const parser = new DOMParser();
         const xml = parser.parseFromString(text, 'application/xml');
-        const rawItems = Array.from(xml.querySelectorAll('item'));
-        const feed = document.getElementById('feed');
 
         // Group items by username
-        const grouped = {};
+        const rawItems = Array.from(xml.querySelectorAll('item'));
+        grouped = {};
         rawItems.forEach(item => {
           const rawTitle = item.querySelector('title')?.textContent || '';
           const [usernameRaw] = rawTitle.split(':');
@@ -39,108 +47,118 @@
           grouped[username].push(item);
         });
 
-        // Sort usernames alphabetically (e.g., adidas before nike)
-        const usernames = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
+        // Sort usernames alphabetically
+        usernames = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
 
-        usernames.forEach(username => {
-          // Section header
-          const section = document.createElement('div');
-          section.className = 'section-header';
-          section.textContent = username;
-          feed.appendChild(section);
-
-          // Sort posts by pubDate desc
-          const posts = grouped[username].sort((a, b) => {
-            const da = new Date(a.querySelector('pubDate')?.textContent);
-            const db = new Date(b.querySelector('pubDate')?.textContent);
-            return db - da;
-          });
-
-          posts.forEach(item => {
-            const postDiv = document.createElement('div');
-            postDiv.className = 'post';
-
-            // Title and link
-            const rawTitle = item.querySelector('title')?.textContent || '';
-            const [, ...rest] = rawTitle.split(':');
-            const title = rest.join(':').trim() || 'Post';
-            const postUrl = item.querySelector('link')?.textContent || '#';
-            const linkEl = document.createElement('a');
-            linkEl.href = postUrl;
-            linkEl.textContent = title;
-            linkEl.target = '_blank';
-            const h2 = document.createElement('h2');
-            h2.appendChild(linkEl);
-            postDiv.appendChild(h2);
-
-            // Description
-            let description = '';
-            const encoded = item.getElementsByTagName('content:encoded');
-            if (encoded.length) {
-              description = encoded[0].textContent;
-            } else {
-              const desc = item.getElementsByTagName('description');
-              description = desc[0]?.textContent || '';
-            }
-            if (description) {
-              const p = document.createElement('p');
-              p.innerHTML = description;
-              postDiv.appendChild(p);
-            }
-
-            // Determine shortcode for fallback
-            let shortcode = '';
-            try {
-              const parts = new URL(postUrl).pathname.split('/').filter(Boolean);
-              shortcode = parts[1] || '';
-            } catch { shortcode = ''; }
-
-            // Media enclosures or fallback
-            const encl = Array.from(item.getElementsByTagName('enclosure'));
-            if (encl.length) {
-              encl.forEach(enc => {
-                let url = enc.getAttribute('url');
-                if (!/^https?:\/\//i.test(url)) {
-                  url = window.location.origin + '/' + url.replace(/^\//, '');
-                }
-                if (url.match(/\.(mp4|mov|webm)$/i)) {
-                  const video = document.createElement('video');
-                  video.src = url;
-                  video.controls = true;
-                  postDiv.appendChild(video);
-                } else {
-                  const img = document.createElement('img');
-                  img.src = url;
-                  img.alt = title;
-                  postDiv.appendChild(img);
-                }
-              });
-            } else if (username && shortcode) {
-              // Fallback to static directory files
-              ['jpg', 'png', 'mp4', 'webm', 'mov'].forEach(ext => {
-                const url = `${window.location.origin}/static/${username}/${shortcode}.${ext}`;
-                if (ext.match(/mp4|mov|webm/)) {
-                  const video = document.createElement('video');
-                  video.src = url;
-                  video.controls = true;
-                  postDiv.appendChild(video);
-                } else {
-                  const img = document.createElement('img');
-                  img.src = url;
-                  img.alt = title;
-                  postDiv.appendChild(img);
-                }
-              });
-            }
-
-            feed.appendChild(postDiv);
-          });
+        // Populate selector
+        const select = document.getElementById('account-select');
+        usernames.forEach(name => {
+          const opt = document.createElement('option');
+          opt.value = name;
+          opt.textContent = name;
+          select.appendChild(opt);
         });
+
+        // Render all by default
+        renderSections('All');
+
+        // Handle selector change
+        select.addEventListener('change', e => renderSections(e.target.value));
+
+        // Theme toggle
+        const themeBtn = document.getElementById('theme-toggle');
+        themeBtn.addEventListener('click', () => {
+          document.body.classList.toggle('bg-gray-900');
+          document.body.classList.toggle('bg-white');
+          document.body.classList.toggle('text-gray-100');
+          document.body.classList.toggle('text-gray-900');
+          themeBtn.textContent = document.body.classList.contains('bg-white') ? 'Dark Mode' : 'Light Mode';
+        });
+
       } catch (err) {
         console.error('Failed to load feed', err);
-        document.getElementById('feed').innerHTML = '<p class="error">Failed to load the feed. Check the console for details.</p>';
+        document.getElementById('feed').innerHTML = '<p class="text-red-500 text-center">Failed to load the feed. Check the console.</p>';
       }
     }
+
+    function renderSections(selected) {
+      const feed = document.getElementById('feed');
+      feed.innerHTML = '';
+
+      const usersToShow = selected === 'All' ? usernames : [selected];
+
+      usersToShow.forEach(username => {
+        // Section header
+        const section = document.createElement('div');
+        section.className = 'border-b border-gray-700 pb-1 mb-2';
+        section.innerHTML = `<h2 class="text-xl font-semibold">${username}</h2>`;
+        feed.appendChild(section);
+
+        // Sort posts by pubDate desc
+        const posts = grouped[username].sort((a, b) => new Date(b.querySelector('pubDate')?.textContent) - new Date(a.querySelector('pubDate')?.textContent));
+
+        // Container for posts
+        const container = document.createElement('div');
+        container.className = '';
+
+        posts.forEach((item, idx) => {
+          const postDiv = document.createElement('div');
+          postDiv.className = `py-2 border-b border-gray-700 ${idx >= 4 ? 'hidden' : ''}`;
+
+          // Title and link
+          const rawTitle = item.querySelector('title')?.textContent || '';
+          const title = rawTitle.split(':').slice(1).join(':').trim() || 'Post';
+          const link = item.querySelector('link')?.textContent || '#';
+          postDiv.innerHTML = `
+            <a href="${link}" target="_blank" class="block font-medium hover:underline text-lg mb-1">${title}</a>
+          `;
+
+          // Description
+          const encoded = item.getElementsByTagName('content:encoded');
+          const desc = encoded.length ? encoded[0].textContent : (item.getElementsByTagName('description')[0]?.textContent || '');
+          if (desc) {
+            const p = document.createElement('p');
+            p.className = 'text-sm leading-relaxed mb-1';
+            p.innerHTML = desc;
+            postDiv.appendChild(p);
+          }
+
+          // Media
+          const encl = Array.from(item.getElementsByTagName('enclosure'));
+          if (encl.length) {
+            encl.forEach(enc => {
+              let url = enc.getAttribute('url');
+              if (!/^https?:\/\//i.test(url)) {
+                url = window.location.origin + '/' + url.replace(/^\//, '');
+              }
+              if (url.match(/\.(mp4|mov|webm)$/i)) {
+                postDiv.innerHTML += `<video src="${url}" controls class="w-full rounded mb-1"></video>`;
+              } else {
+                postDiv.innerHTML += `<img src="${url}" alt="${title}" class="w-full rounded mb-1"/>`;
+              }
+            });
+          }
+
+          container.appendChild(postDiv);
+        });
+
+        // Lazy-load button
+        if (posts.length > 4) {
+          const btn = document.createElement('button');
+          btn.textContent = 'Show More';
+          btn.className = 'mt-2 px-2 py-1 bg-blue-600 text-white rounded text-sm';
+          btn.addEventListener('click', () => {
+            container.querySelectorAll('.hidden').forEach(el => el.classList.remove('hidden'));
+            btn.remove();
+          });
+          container.appendChild(btn);
+        }
+
+        feed.appendChild(container);
+      });
+    }
+
+    // Initial load
     loadFeed();
   </script>
 </body>
